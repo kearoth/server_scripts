@@ -1,0 +1,125 @@
+#!/bin/bash
+#version=0.01
+#written by joovel
+option=$1
+adminemail="admin@example.com"
+
+create-db(){
+echo "Type database root password:"
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS $user; CREATE USER '$user'@'localhost' IDENTIFIED BY '$password'; GRANT ALL PRIVILEGES ON $user.* TO '$user'@'localhost';"
+}
+
+enable-db-backup(){
+echo "Adding options to webmin config for db backup"
+echo "backup_email_$user=$adminemail" >> /etc/webmin/mysql/config
+echo "backup_options_$user=" >> /etc/webmin/mysql/config
+echo "backup_quick_$user=0" >> /etc/webmin/mysql/config
+echo "backup_compress_$user=0" >> /etc/webmin/mysql/config
+echo "backup_charset_$user=" >> /etc/webmin/mysql/config
+echo "backup_notify_$user=1" >> /etc/webmin/mysql/config
+echo "backup_mkdir_$user=" >> /etc/webmin/mysql/config
+echo "backup_after_$user=chmod 600 /home/$user/$user.sql" >> /etc/webmin/mysql/config
+echo "backup_tables_$user=" >> /etc/webmin/mysql/config
+echo "backup_compatible_$user=" >> /etc/webmin/mysql/config
+echo "backup_$user=/home/$user/$user.sql" >> /etc/webmin/mysql/config
+echo "backup_before_$user=" >> /etc/webmin/mysql/config
+echo "backup_single_$user=0" >> /etc/webmin/mysql/config
+echo "backup_drop_$user=0" >> /etc/webmin/mysql/config
+echo "backup_where_$user=" >> /etc/webmin/mysql/config
+echo "Options added to webmin config"
+
+echo "Installing cronjob.."
+crontab -l > /root/crontab.backup
+crontab -l > /root/crontab.temp
+echo "@daily /etc/webmin/mysql/backup.pl $user" >> /root/crontab.temp
+crontab /root/crontab.temp
+rm /root/crontab.temp
+echo "cronjob installed..."
+echo "There is a backup of the crontab in /root/crontab.backup"
+}
+
+create-php-pool(){
+  echo "[$fqdn]" > /etc/php/$version/fpm/pool.d/$fqdn.conf
+  echo "user = $user" >> /etc/php/$version/fpm/pool.d/$fqdn.conf
+  echo "group = $user" >> /etc/php/$version/fpm/pool.d/$fqdn.conf
+  echo "include = /etc/php/$version/fpm/pool.d/common" >> /etc/php/$version/fpm/pool.d/$fqdn.conf
+}
+
+create-user(){
+mkdir /home/$user
+useradd $user -d /home/$user -s /bin/false
+echo "$user":"$password" | chpasswd
+chown $user:$user /home/$user/.
+}
+
+get-user-data(){
+echo "Type username:"
+read user
+echo "Type password for user:"
+read password
+echo "Type fully quilified domain name:"
+read fqdn
+}
+
+get-php-version(){
+validversions=$(du -sh /etc/php/* | cut -d '/' -f 4)
+echo "Which php version would you like?"
+read version
+for v in $validversions
+do
+if [[ $version = $v ]]; then
+        phpversion=ok
+fi
+done
+if [[ ! $phpversion = ok ]]; then
+        echo "invalid php version"
+        echo "Valid versions are:"
+        echo "$validversions"
+        get-php-version
+fi
+}
+
+restore-cron(){
+if [[ ( $option == "--restore-cron" ) ]]; then
+if [ ! -f /root/crontab.backup ]; then echo "crontab backup missing"; exit 1; fi
+echo "Restoring crontab from last backup"
+echo "Adding countdown for dramatic effect..."
+sleep 1
+echo "3..."
+sleep 1
+echo "2..."
+sleep 1
+echo "1..."
+sleep .5
+echo "0,5..."
+sleep .5
+clear
+echo "Done"
+crontab /root/crontab.backup
+echo "Crontab restored"
+fi
+}
+
+restore-cron
+get-user-data
+get-php-version
+create-user
+create-db
+enable-db-backup
+
+wordpress(){
+if [[ ( $option == "--wordpress" ) ]]; then
+cd /home/$user
+clear
+echo "Fetching latest wordpress..."
+wget https://wordpress.org/latest.zip
+clear
+echo "Extracting wordpress archive..."
+unzip latest.zip
+clear
+echo "Fixing user permissions on wordpress files..."
+chown $user:$user wordpress -R
+rm latest.zip
+fi
+}
+wordpress
